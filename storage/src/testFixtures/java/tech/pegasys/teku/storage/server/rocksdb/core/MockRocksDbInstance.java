@@ -66,7 +66,6 @@ public class MockRocksDbInstance implements RocksDbAccessor {
     final Set<RocksDbVariable<?>> variables =
         Schema.streamVariables(schema).collect(Collectors.toSet());
     checkArgument(columns.size() > 0, "No columns attached to schema");
-    checkArgument(variables.size() > 0, "No variables attached to schema");
 
     final Map<RocksDbColumn<?, ?>, NavigableMap<Bytes, Bytes>> columnData =
         columns.stream()
@@ -82,12 +81,6 @@ public class MockRocksDbInstance implements RocksDbAccessor {
     return Optional.ofNullable(variableData.get(variable))
         .map(Bytes::toArrayUnsafe)
         .map(variable.getSerializer()::deserialize);
-  }
-
-  @Override
-  public <T> T getOrThrow(final RocksDbVariable<T> variable) {
-    assertOpen();
-    return get(variable).orElseThrow();
   }
 
   @Override
@@ -128,6 +121,15 @@ public class MockRocksDbInstance implements RocksDbAccessor {
     assertOpen();
     assertValidColumn(column);
     return columnData.get(column).entrySet().stream().map(e -> columnEntry(column, e));
+  }
+
+  @Override
+  public <K extends Comparable<K>, V> Stream<ColumnEntry<K, V>> stream(
+      final RocksDbColumn<K, V> column, final K from, final K to) {
+    assertOpen();
+    return columnData.get(column)
+        .subMap(keyToBytes(column, from), true, keyToBytes(column, to), true).entrySet().stream()
+        .map(e -> columnEntry(column, e));
   }
 
   @Override

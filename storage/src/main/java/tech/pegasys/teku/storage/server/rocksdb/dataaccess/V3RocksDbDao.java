@@ -30,8 +30,7 @@ import tech.pegasys.teku.storage.server.rocksdb.core.RocksDbAccessor;
 import tech.pegasys.teku.storage.server.rocksdb.core.RocksDbAccessor.RocksDbTransaction;
 import tech.pegasys.teku.storage.server.rocksdb.schema.V3Schema;
 
-public class V3RocksDbDao implements RocksDbDao {
-  // Persistent data
+public class V3RocksDbDao implements RocksDbHotDao, RocksDbFinalizedDao, RocksDbEth1Dao {
   private final RocksDbAccessor db;
 
   public V3RocksDbDao(final RocksDbAccessor db) {
@@ -59,13 +58,36 @@ public class V3RocksDbDao implements RocksDbDao {
   }
 
   @Override
-  public Optional<Bytes32> getFinalizedRootAtSlot(final UnsignedLong slot) {
-    return db.get(V3Schema.FINALIZED_ROOTS_BY_SLOT, slot);
+  public Optional<SignedBeaconBlock> getFinalizedBlockAtSlot(final UnsignedLong slot) {
+    return db.get(V3Schema.FINALIZED_ROOTS_BY_SLOT, slot).flatMap(this::getFinalizedBlock);
   }
 
   @Override
-  public Optional<Bytes32> getLatestFinalizedRootAtSlot(final UnsignedLong slot) {
-    return db.getFloorEntry(V3Schema.FINALIZED_ROOTS_BY_SLOT, slot).map(ColumnEntry::getValue);
+  public Optional<SignedBeaconBlock> getLatestFinalizedBlockAtSlot(final UnsignedLong slot) {
+    return db.getFloorEntry(V3Schema.FINALIZED_ROOTS_BY_SLOT, slot)
+        .map(ColumnEntry::getValue)
+        .flatMap(this::getFinalizedBlock);
+  }
+
+  @Override
+  public Optional<BeaconState> getLatestAvailableFinalizedState(final UnsignedLong maxSlot) {
+    return db.getFloorEntry(V3Schema.FINALIZED_ROOTS_BY_SLOT, maxSlot)
+        .map(ColumnEntry::getValue)
+        .flatMap(root -> db.get(V3Schema.FINALIZED_STATES_BY_ROOT, root));
+  }
+
+  @Override
+  @MustBeClosed
+  public Stream<SignedBeaconBlock> streamFinalizedBlocks(
+      final UnsignedLong startSlot, final UnsignedLong endSlot) {
+    return db.stream(V3Schema.FINALIZED_ROOTS_BY_SLOT, startSlot, endSlot)
+        .map(ColumnEntry::getValue)
+        .flatMap(root -> getFinalizedBlock(root).stream());
+  }
+
+  @Override
+  public Optional<UnsignedLong> getSlotForFinalizedBlockRoot(final Bytes32 blockRoot) {
+    return getFinalizedBlock(blockRoot).map(SignedBeaconBlock::getSlot);
   }
 
   @Override
@@ -76,11 +98,6 @@ public class V3RocksDbDao implements RocksDbDao {
   @Override
   public Optional<SignedBeaconBlock> getFinalizedBlock(final Bytes32 root) {
     return db.get(V3Schema.FINALIZED_BLOCKS_BY_ROOT, root);
-  }
-
-  @Override
-  public Optional<BeaconState> getFinalizedState(final Bytes32 root) {
-    return db.get(V3Schema.FINALIZED_STATES_BY_ROOT, root);
   }
 
   @Override
@@ -115,7 +132,17 @@ public class V3RocksDbDao implements RocksDbDao {
   }
 
   @Override
-  public Updater updater() {
+  public HotUpdater hotUpdater() {
+    return new V3Updater(db);
+  }
+
+  @Override
+  public FinalizedUpdater finalizedUpdater() {
+    return new V3Updater(db);
+  }
+
+  @Override
+  public Eth1Updater eth1Updater() {
     return new V3Updater(db);
   }
 
@@ -124,7 +151,7 @@ public class V3RocksDbDao implements RocksDbDao {
     db.close();
   }
 
-  private static class V3Updater implements Updater {
+  private static class V3Updater implements HotUpdater, FinalizedUpdater, Eth1Updater {
 
     private final RocksDbTransaction transaction;
 
@@ -209,13 +236,11 @@ public class V3RocksDbDao implements RocksDbDao {
     @Override
     public void addMinGenesisTimeBlock(final MinGenesisTimeBlockEvent event) {
       transaction.put(V3Schema.MIN_GENESIS_TIME_BLOCK, event);
-      transaction.commit();
     }
 
     @Override
     public void addDepositsFromBlockEvent(final DepositsFromBlockEvent event) {
       transaction.put(V3Schema.DEPOSITS_FROM_BLOCK_EVENTS, event.getBlockNumber(), event);
-      transaction.commit();
     }
 
     @Override

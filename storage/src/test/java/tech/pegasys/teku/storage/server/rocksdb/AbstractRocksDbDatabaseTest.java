@@ -13,10 +13,11 @@
 
 package tech.pegasys.teku.storage.server.rocksdb;
 
-import static com.google.common.primitives.UnsignedLong.ONE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.google.common.primitives.UnsignedLong;
+import org.apache.tuweni.bytes.Bytes32;
 import org.junit.jupiter.api.Test;
 import tech.pegasys.teku.datastructures.blocks.SignedBlockAndState;
 import tech.pegasys.teku.datastructures.state.Checkpoint;
@@ -41,7 +42,7 @@ public abstract class AbstractRocksDbDatabaseTest extends AbstractStorageBackedD
     final SignedBlockAndState newValue = chainBuilder.generateBlockAtSlot(1);
     // Sanity check
     assertThat(store.getBlockState(newValue.getRoot())).isNull();
-    final StoreTransaction transaction = store.startTransaction(storageUpdateChannel);
+    final StoreTransaction transaction = recentChainData.startStoreTransaction();
     transaction.putBlockAndState(newValue);
 
     final SafeFuture<Void> result = transaction.commit();
@@ -57,20 +58,11 @@ public abstract class AbstractRocksDbDatabaseTest extends AbstractStorageBackedD
   }
 
   @Test
-  public void shouldThrowIfClosedDatabaseIsRead_getFinalizedRootAtSlot() throws Exception {
+  public void shouldThrowIfClosedDatabaseIsRead_getSlotForFinalizedBlockRoot() throws Exception {
     database.storeGenesis(store);
     database.close();
 
-    assertThatThrownBy(() -> database.getFinalizedRootAtSlot(ONE))
-        .isInstanceOf(IllegalStateException.class);
-  }
-
-  @Test
-  public void shouldThrowIfClosedDatabaseIsRead_getLatestFinalizedRootAtSlot() throws Exception {
-    database.storeGenesis(store);
-    database.close();
-
-    assertThatThrownBy(() -> database.getLatestFinalizedRootAtSlot(ONE))
+    assertThatThrownBy(() -> database.getSlotForFinalizedBlockRoot(Bytes32.ZERO))
         .isInstanceOf(IllegalStateException.class);
   }
 
@@ -84,20 +76,30 @@ public abstract class AbstractRocksDbDatabaseTest extends AbstractStorageBackedD
   }
 
   @Test
+  public void shouldThrowIfClosedDatabaseIsRead_streamFinalizedBlocks() throws Exception {
+    database.storeGenesis(store);
+    database.close();
+
+    assertThatThrownBy(() -> database.streamFinalizedBlocks(UnsignedLong.ZERO, UnsignedLong.ONE))
+        .isInstanceOf(IllegalStateException.class);
+  }
+
+  @Test
   public void shouldThrowIfClosedDatabaseIsRead_getHistoricalState() throws Exception {
     // Store genesis
     database.storeGenesis(store);
     // Add a new finalized block to supersede genesis
     final SignedBlockAndState newBlock = chainBuilder.generateBlockAtSlot(1);
     final Checkpoint newCheckpoint = getCheckpointForBlock(newBlock.getBlock());
-    final StoreTransaction transaction = store.startTransaction(storageUpdateChannel);
+    final StoreTransaction transaction = recentChainData.startStoreTransaction();
     transaction.putBlockAndState(newBlock);
     transaction.setFinalizedCheckpoint(newCheckpoint);
     transaction.commit().reportExceptions();
     // Close db
     database.close();
 
-    assertThatThrownBy(() -> database.getFinalizedState(genesisCheckpoint.getRoot()))
+    assertThatThrownBy(
+            () -> database.getLatestAvailableFinalizedState(genesisCheckpoint.getEpochStartSlot()))
         .isInstanceOf(IllegalStateException.class);
   }
 }
