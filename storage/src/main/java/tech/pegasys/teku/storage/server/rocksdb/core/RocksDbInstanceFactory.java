@@ -17,6 +17,7 @@ import com.google.common.collect.ImmutableMap;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.tuweni.bytes.Bytes;
@@ -27,6 +28,8 @@ import org.rocksdb.ColumnFamilyOptions;
 import org.rocksdb.DBOptions;
 import org.rocksdb.Env;
 import org.rocksdb.LRUCache;
+import org.rocksdb.MemoryUsageType;
+import org.rocksdb.MemoryUtil;
 import org.rocksdb.RocksDBException;
 import org.rocksdb.TransactionDB;
 import org.rocksdb.TransactionDBOptions;
@@ -59,6 +62,8 @@ public class RocksDbInstanceFactory {
             .collect(Collectors.toMap(RocksDbColumn::getId, Function.identity()));
 
     try {
+
+      dbOptions.setRowCache(new LRUCache(1 * 1024 * 1024L));
       // columnHandles will be filled when the db is opened
       final List<ColumnFamilyHandle> columnHandles = new ArrayList<>(columnDescriptors.size());
       final TransactionDB db =
@@ -68,6 +73,25 @@ public class RocksDbInstanceFactory {
               configuration.getDatabaseDir().toString(),
               columnDescriptors,
               columnHandles);
+
+
+      new Thread(
+              () -> {
+                while (true) {
+                  try {
+                    Map<MemoryUsageType, Long> usage =
+                        MemoryUtil.getApproximateMemoryUsageByType(
+                            List.of(db),
+                            Set.of(dbOptions.rowCache(), cache));
+                    System.err.println("###### " + usage);
+
+                    Thread.sleep(10000);
+                  } catch (Exception e) {
+                    e.printStackTrace();
+                  }
+                }
+              })
+          .start();
 
       final ImmutableMap.Builder<RocksDbColumn<?, ?>, ColumnFamilyHandle> builder =
           ImmutableMap.builder();
@@ -109,6 +133,7 @@ public class RocksDbInstanceFactory {
   private static DBOptions createDBOptions(final RocksDbConfiguration configuration) {
     return new DBOptions()
         .setCreateIfMissing(true)
+        .setDbWriteBufferSize(configuration.getCacheCapacity())
         .setBytesPerSync(1048576L)
         .setWalBytesPerSync(1048576L)
         .setMaxBackgroundFlushes(2)
@@ -121,6 +146,8 @@ public class RocksDbInstanceFactory {
   private static ColumnFamilyOptions createColumnFamilyOptions(
       final RocksDbConfiguration configuration) {
     return new ColumnFamilyOptions()
+//        .setMaxWriteBufferNumber(2)
+//        .setWriteBufferSize(1 * 1024 * 1024)
         .setTableFormatConfig(createBlockBasedTableConfig(configuration));
   }
 
@@ -136,9 +163,10 @@ public class RocksDbInstanceFactory {
     return columnDescriptors;
   }
 
+  static LRUCache cache;
   private static BlockBasedTableConfig createBlockBasedTableConfig(
       final RocksDbConfiguration config) {
-    final LRUCache cache = new LRUCache(config.getCacheCapacity());
+    cache = new LRUCache(config.getCacheCapacity());
     return new BlockBasedTableConfig().setBlockCache(cache);
   }
 }

@@ -16,6 +16,9 @@ package tech.pegasys.teku.benchmarks;
 import static org.mockito.Mockito.mock;
 
 import com.google.common.eventbus.EventBus;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import org.apache.tuweni.bytes.Bytes;
@@ -23,6 +26,7 @@ import org.apache.tuweni.bytes.Bytes32;
 import org.apache.tuweni.ssz.SSZ;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import tech.pegasys.teku.benchmarks.gen.BlockIO;
 import tech.pegasys.teku.benchmarks.gen.BlockIO.Reader;
 import tech.pegasys.teku.benchmarks.gen.BlsKeyPairIO;
@@ -43,6 +47,12 @@ import tech.pegasys.teku.util.hashtree.HashTreeUtil.SSZTypes;
 /** The test to be run manually for profiling block imports */
 public class ProfilingRun {
 
+  List<BeaconState> statesList = new ArrayList<>();
+
+  public static void main(String[] args) throws Exception {
+    new ProfilingRun().importBlocks();
+  }
+
   @Disabled
   @Test
   public void importBlocks() throws Exception {
@@ -50,7 +60,7 @@ public class ProfilingRun {
     Constants.setConstants("mainnet");
     BeaconStateUtil.BLS_VERIFY_DEPOSIT = false;
 
-    int validatorsCount = 16 * 1024;
+    int validatorsCount = 32 * 1024;
 
     String blocksFile =
         "/blocks/blocks_epoch_"
@@ -70,17 +80,25 @@ public class ProfilingRun {
     BeaconState initialState =
         StartupUtil.createMockedStartInitialBeaconState(0, validatorKeys, false);
 
+    statesList.add(initialState);
+
     while (true) {
-      EventBus localEventBus = mock(EventBus.class);
+      EventBus localEventBus = mock(EventBus.class, Mockito.withSettings().stubOnly());
       RecentChainData recentChainData = MemoryOnlyRecentChainData.create(localEventBus);
       BeaconChainUtil localChain = BeaconChainUtil.create(recentChainData, validatorKeys, false);
       recentChainData.initializeFromGenesis(initialState);
+      initialState = null;
+      //      ForkChoice forkChoice = new ForkChoice(recentChainData, new StateTransition());
+      //      BlockImporter blockImporter = new BlockImporter(recentChainData, forkChoice,
+      // localEventBus);
       BlockImporter blockImporter = new BlockImporter(recentChainData, localEventBus);
 
       System.out.println("Start blocks import from " + blocksFile);
+      int counter = 1;
       try (Reader blockReader = BlockIO.createResourceReader(blocksFile)) {
         for (SignedBeaconBlock block : blockReader) {
           long s = System.currentTimeMillis();
+
           localChain.setSlot(block.getSlot());
           BlockImportResult result = blockImporter.importBlock(block);
           //        compareHashes(result.getBlockProcessingRecord().getPostState());
@@ -91,6 +109,18 @@ public class ProfilingRun {
                   + (System.currentTimeMillis() - s)
                   + " ms: "
                   + result);
+
+          if (--counter == 0) {
+            statesList.add(result.getBlockProcessingRecord().get().getPostState());
+            System.out.println("Press enter: ");
+            String line = new BufferedReader(new InputStreamReader(System.in)).readLine();
+            try {
+              counter = Integer.parseInt(line);
+            } catch (NumberFormatException e) {
+              counter = 1;
+            }
+          }
+
         }
       }
     }

@@ -22,9 +22,9 @@ import com.google.common.primitives.UnsignedLong;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.tuweni.bytes.Bytes32;
-import tech.pegasys.teku.core.blockvalidator.BatchBlockValidator;
 import tech.pegasys.teku.core.blockvalidator.BlockValidator;
 import tech.pegasys.teku.core.blockvalidator.BlockValidator.BlockValidationResult;
+import tech.pegasys.teku.core.blockvalidator.NopBlockValidator;
 import tech.pegasys.teku.core.epoch.EpochProcessor;
 import tech.pegasys.teku.core.exceptions.BlockProcessingException;
 import tech.pegasys.teku.core.exceptions.EpochProcessingException;
@@ -39,7 +39,7 @@ public class StateTransition {
   private static final Logger LOG = LogManager.getLogger();
 
   private static BlockValidator createDefaultBlockValidator() {
-    return new BatchBlockValidator();
+    return new NopBlockValidator();
   }
 
   private final BlockValidator blockValidator;
