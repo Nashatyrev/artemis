@@ -38,6 +38,7 @@ import tech.pegasys.teku.storage.server.rocksdb.RocksDbConfiguration;
 import tech.pegasys.teku.storage.server.rocksdb.schema.RocksDbColumn;
 import tech.pegasys.teku.storage.server.rocksdb.schema.Schema;
 
+@SuppressWarnings("CatchAndPrintStackTrace")
 public class RocksDbInstanceFactory {
   static {
     RocksDbUtil.loadNativeLibrary();
