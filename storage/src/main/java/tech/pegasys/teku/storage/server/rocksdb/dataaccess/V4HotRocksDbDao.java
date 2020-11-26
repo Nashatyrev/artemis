@@ -14,6 +14,7 @@
 package tech.pegasys.teku.storage.server.rocksdb.dataaccess;
 
 import com.google.errorprone.annotations.MustBeClosed;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -120,7 +121,8 @@ public class V4HotRocksDbDao implements RocksDbHotDao, RocksDbEth1Dao, RocksDbPr
 
   @Override
   public Map<UInt64, VoteTracker> getVotes() {
-    return db.getAll(schema.getColumnVotes());
+    return Collections.emptyMap();
+//    return db.getAll(schema.getColumnVotes());
   }
 
   @Override
@@ -248,8 +250,8 @@ public class V4HotRocksDbDao implements RocksDbHotDao, RocksDbEth1Dao, RocksDbPr
 
     @Override
     public void addVotes(final Map<UInt64, VoteTracker> votes) {
-      votes.forEach(
-          (validatorIndex, vote) -> transaction.put(schema.getColumnVotes(), validatorIndex, vote));
+//      votes.forEach(
+//          (validatorIndex, vote) -> transaction.put(schema.getColumnVotes(), validatorIndex, vote));
     }
 
     @Override
