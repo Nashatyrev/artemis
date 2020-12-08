@@ -61,6 +61,7 @@ public class SszSuperNode implements TreeNode {
       if (offset < ssz.size()) {
         return elementTemplate.calculateHashTreeRoot(ssz, offset);
       } else {
+        assert offset <= elementTemplate.getSszLength() * (getMaxElements() - 1);
         return DEFAULT_NODE.hashTreeRoot();
       }
     } else {
